@@ -267,7 +267,6 @@
                             <span class="status-header notdone">Not Done</span>
                         </th>
                         <th class="text-center">Total</th>
-                        <th class="text-center">PO Count</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -302,15 +301,6 @@
                             <span class="count-badge notdone">{{ team.notdone }}</span>
                         </td>
                         <td class="text-center text-bold">{{ team.total }}</td>
-                        <td class="text-center">
-                            {% if po_counts_state == 'ready' %}
-                            <span class="count-badge primary">{{ team.po_count }}</span>
-                            {% elif po_counts_state == 'locked' %}
-                            <span class="badge badge-subtle">Locked</span>
-                            {% else %}
-                            <span class="badge badge-subtle">Unavailable</span>
-                            {% endif %}
-                        </td>
                         <td>
                             <button type="button" class="btn btn-ghost btn-sm toggle-members"
                                 data-team="{{ team.team }}">
@@ -344,15 +334,6 @@
                             <span class="count-badge notdone small">{{ member.notdone }}</span>
                         </td>
                         <td class="text-center">{{ member.total }}</td>
-                        <td class="text-center">
-                            {% if po_counts_state == 'ready' %}
-                            <span class="count-badge primary">{{ member.po_count }}</span>
-                            {% elif po_counts_state == 'locked' %}
-                            <span class="badge badge-subtle">Locked</span>
-                            {% else %}
-                            <span class="badge badge-subtle">Unavailable</span>
-                            {% endif %}
-                        </td>
                         <td></td>
                     </tr>
                     {% endfor %}
@@ -405,7 +386,6 @@
                             <span class="status-header notdone">Not Done</span>
                         </th>
                         <th class="text-center">Total</th>
-                        <th class="text-center">PO Count</th>
                         <th class="text-center">Completion %</th>
                     </tr>
                 </thead>
@@ -437,15 +417,6 @@
                             <span class="count-badge notdone">{{ stat.notdone }}</span>
                         </td>
                         <td class="text-center text-bold">{{ stat.total }}</td>
-                        <td class="text-center">
-                            {% if po_counts_state == 'ready' %}
-                            <span class="count-badge primary">{{ stat.po_count }}</span>
-                            {% elif po_counts_state == 'locked' %}
-                            <span class="badge badge-subtle">Locked</span>
-                            {% else %}
-                            <span class="badge badge-subtle">Unavailable</span>
-                            {% endif %}
-                        </td>
                         <td class="text-center">
                             {% set completion_rate = ((stat.completed / stat.total * 100) if stat.total > 0 else
                             0)|round(1) %}

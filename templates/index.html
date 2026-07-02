@@ -16,16 +16,6 @@
             <div class="dashboard-banner-badges">
                 <span class="dashboard-chip">Primary period: {{ period_label }}</span>
                 <span class="dashboard-chip">Activity snapshot: {{ activity_period_label }}</span>
-                <span class="dashboard-chip {% if po_summary.state == 'ready' %}is-ready{% elif po_summary.state == 'locked' %}is-warn{% else %}is-muted{% endif %}">
-                    PO:
-                    {% if po_summary.state == 'ready' %}
-                    Live
-                    {% elif po_summary.state == 'locked' %}
-                    Locked
-                    {% else %}
-                    Unavailable
-                    {% endif %}
-                </span>
             </div>
         </div>
     </section>
@@ -129,21 +119,6 @@
             </div>
         </div>
 
-        <div class="hero-stat-card">
-            <div class="hero-stat-icon pink">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <polyline points="14,2 14,8 20,8" />
-                    <line x1="8" y1="13" x2="16" y2="13" />
-                    <line x1="8" y1="17" x2="13" y2="17" />
-                </svg>
-            </div>
-            <div class="hero-stat-content">
-                <span class="hero-stat-value">{{ headline.po_metric }}</span>
-                <span class="hero-stat-label">PO Records</span>
-                <span class="hero-stat-sublabel">{{ po_summary.message }}</span>
-            </div>
-        </div>
     </div>
 
     <section class="dashboard-insights-grid">
@@ -331,27 +306,6 @@
             {% endif %}
         </section>
     </div>
-
-    <section class="chart-card card">
-        <div class="card-header">
-            <h3 class="card-title">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <polyline points="14,2 14,8 20,8" />
-                    <line x1="8" y1="13" x2="16" y2="13" />
-                </svg>
-                PO Intake Trend
-            </h3>
-            <a href="{{ url_for('po.po_dashboard') }}" class="btn btn-ghost btn-sm">Open</a>
-        </div>
-        {% if po_chart %}
-        <div class="chart-container tall">
-            <canvas id="poChart" aria-label="PO intake trend chart"></canvas>
-        </div>
-        {% else %}
-        <div class="dashboard-empty-note">{{ po_summary.message }}</div>
-        {% endif %}
-    </section>
 
     <div class="leaderboards-row">
         <section class="leaderboard-card card">
@@ -635,7 +589,6 @@
     const recordRoundData = {{ record_round_chart|tojson|default('[]', true) }};
     const activityData = {{ activity_chart|tojson|default('[]', true) }};
     const candidateFocusData = {{ candidate_focus_chart|tojson|default('[]', true) }};
-    const poData = {{ po_chart|tojson|default('[]', true) }};
 
     buildHorizontalBarChart('expertChart', expertData, 'Interviews', {
         background: 'rgba(59, 130, 246, 0.75)',
@@ -662,12 +615,6 @@
     buildHorizontalBarChart('candidateFocusChart', candidateFocusData, 'Interviews', {
         background: 'rgba(6, 182, 212, 0.75)',
         border: '#06b6d4'
-    });
-
-    buildLineChart('poChart', poData, 'PO Records', {
-        border: '#f472b6',
-        gradientTop: 'rgba(244, 114, 182, 0.35)',
-        gradientBottom: 'rgba(244, 114, 182, 0.03)'
     });
 </script>
 {% endblock %}

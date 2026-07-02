@@ -4,7 +4,6 @@ from datetime import datetime
 from flask import Blueprint, current_app, render_template, request, url_for
 
 from db import get_db, get_teams_db
-from po_security import filter_records_for_po_access, get_current_po_access, po_pin_security_enabled
 from routes.analytics import (
     build_interview_stats_match,
     get_expert_funnel_data,
@@ -13,7 +12,7 @@ from routes.analytics import (
 )
 from routes.candidates import fetch_expert_activity_data
 from routes.kpi import calculate_kpi_data
-from routes.po import fetch_po_records, get_supabase_client, month_label
+from services.interview_metrics import build_interview_date_match
 
 dashboard_bp = Blueprint("dashboard", __name__)
 DASHBOARD_CACHE_VERSION = "v3"
@@ -39,16 +38,8 @@ def get_dashboard_dates():
 
 
 def build_received_date_filter(start_date="", end_date=""):
-    date_filter = {}
-
-    if start_date:
-        date_filter["$gte"] = (
-            start_date if "T" in start_date else f"{start_date}T00:00:00"
-        )
-    if end_date:
-        date_filter["$lte"] = end_date if "T" in end_date else f"{end_date}T23:59:59"
-
-    return {"receivedDateTime": date_filter} if date_filter else {}
+    # Filter on the real interview date (Date of Interview), not receivedDateTime.
+    return build_interview_date_match(start_date, end_date)
 
 
 def format_period_label(start_date="", end_date=""):
@@ -232,6 +223,7 @@ def index():
                     "assignedTo": 1,
                     "Candidate Name": 1,
                     "actualRound": 1,
+                    "Date of Interview": 1,
                     "receivedDateTime": 1,
                 },
             )
@@ -243,70 +235,13 @@ def index():
                 "expert": display_name(row.get("assignedTo")),
                 "candidate": row.get("Candidate Name") or "Unknown",
                 "round": row.get("actualRound") or "Unknown",
-                "date": (row.get("receivedDateTime") or "")[:10] or "N/A",
+                "date": row.get("Date of Interview") or (row.get("receivedDateTime") or "")[:10] or "N/A",
             }
             for row in recent_records_rows
         ]
 
         teams = list(teams_db.teams.find({}, {"_id": 0, "name": 1, "members": 1}))
         teams_configured = len(teams)
-
-        po_access = get_current_po_access()
-        po_summary = {
-            "state": "locked" if po_pin_security_enabled() and not po_access else "unavailable",
-            "total_records": 0,
-            "unique_candidates": 0,
-            "active_months": 0,
-            "top_team": "",
-            "message": (
-                "Unlock PO access to surface intake insights here."
-                if po_pin_security_enabled() and not po_access
-                else "PO insights are currently unavailable."
-            ),
-        }
-        po_chart = []
-
-        try:
-            if not (po_pin_security_enabled() and not po_access):
-                po_records = filter_records_for_po_access(
-                    fetch_po_records(get_supabase_client()),
-                    po_access,
-                )
-                po_month_counts = Counter(
-                    record.get("month_key")
-                    for record in po_records
-                    if record.get("month_key")
-                )
-                po_team_counts = Counter(
-                    record.get("team_name") or "Unassigned" for record in po_records
-                )
-                po_chart = [
-                    {"name": month_label(month_key), "count": po_month_counts[month_key]}
-                    for month_key in sorted(po_month_counts.keys())[-6:]
-                ]
-                po_summary = {
-                    "state": "ready",
-                    "total_records": len(po_records),
-                    "unique_candidates": len(
-                        {
-                            str(record.get("candidate_name") or "").strip()
-                            for record in po_records
-                            if str(record.get("candidate_name") or "").strip()
-                        }
-                    ),
-                    "active_months": len(po_month_counts),
-                    "top_team": po_team_counts.most_common(1)[0][0] if po_team_counts else "",
-                    "message": "Live PO intake synced from the PO pages.",
-                }
-        except Exception as exc:
-            po_summary = {
-                "state": "unavailable",
-                "total_records": 0,
-                "unique_candidates": 0,
-                "active_months": 0,
-                "top_team": "",
-                "message": str(exc) or "PO insights are currently unavailable.",
-            }
 
         page_cards = [
             {
@@ -330,7 +265,7 @@ def index():
                     if top_candidate
                     else "Candidate conversion view"
                 ),
-                "description": "Candidate funnel performance with unique client coverage.",
+                "description": "Candidate funnel performance across interview rounds.",
                 "href": url_for("analytics.candidate_analytics"),
                 "tone": "cyan",
             },
@@ -380,32 +315,6 @@ def index():
                 "href": url_for("analytics.export_center"),
                 "tone": "blue",
             },
-            {
-                "name": "PO Dashboard",
-                "metric": (
-                    f"{po_summary['total_records']} records"
-                    if po_summary["state"] == "ready"
-                    else "Locked"
-                    if po_summary["state"] == "locked"
-                    else "Unavailable"
-                ),
-                "description": "PO intake trend and grouped operational view.",
-                "href": url_for("po.po_dashboard"),
-                "tone": "purple",
-            },
-            {
-                "name": "PO Candidate",
-                "metric": (
-                    f"{po_summary['unique_candidates']} candidates"
-                    if po_summary["state"] == "ready"
-                    else "Locked"
-                    if po_summary["state"] == "locked"
-                    else "Unavailable"
-                ),
-                "description": "Candidate-level PO stream grouped by month.",
-                "href": url_for("po.po_candidate_dashboard"),
-                "tone": "teal",
-            },
         ]
 
         return {
@@ -418,13 +327,6 @@ def index():
                 "completion_rate": interview_completion_rate,
                 "avg_match_rate": kpi_data.get("summary", {}).get("avg_match_rate", 0),
                 "active_candidates": activity_summary.get("active_candidates", 0),
-                "po_metric": (
-                    po_summary["total_records"]
-                    if po_summary["state"] == "ready"
-                    else "Locked"
-                    if po_summary["state"] == "locked"
-                    else "N/A"
-                ),
             },
             "leaders": {
                 "expert": ranked_experts[0] if ranked_experts else None,
@@ -462,8 +364,6 @@ def index():
                 for item in ranked_activity_teams[:8]
             ],
             "candidate_focus_chart": candidate_focus_chart,
-            "po_chart": po_chart,
-            "po_summary": po_summary,
             "top_experts": [
                 {
                     "name": display_name(item.get("expert")),

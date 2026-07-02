@@ -5,18 +5,6 @@
 {% block content %}
 {% set lead_team = team_data[0] if team_data else None %}
 <div class="page-content report-page">
-    {% if po_counts_locked %}
-    <div class="card error-card" style="margin-bottom: 20px;">
-        <div class="card-header">
-            <h3 class="card-title">PO Counts Are Locked</h3>
-        </div>
-        <p class="muted-text">
-            Placement Offer counts come from the PO dashboard. Unlock PO access first, then this column will show the real counts.
-            <a href="{{ po_unlock_url }}" class="candidate-link">Unlock PO Access</a>
-        </p>
-    </div>
-    {% endif %}
-
     <section class="card report-hero">
         <div class="report-copy">
             <span class="report-eyebrow">Activity Snapshot</span>
@@ -44,17 +32,6 @@
                     {{ lead_team.active }} active candidates from the busiest team in this view
                     {% else %}
                     Update the month or filters to populate team activity
-                    {% endif %}
-                </span>
-            </div>
-            <div class="report-highlight">
-                <span class="report-highlight-label">PO Visibility</span>
-                <span class="report-highlight-value">{{ 'Locked' if po_counts_locked else 'Live' }}</span>
-                <span class="report-highlight-meta">
-                    {% if po_counts_locked %}
-                    Unlock PO access to surface placement offer counts in this report
-                    {% else %}
-                    Placement offer counts are included for visible experts
                     {% endif %}
                 </span>
             </div>
@@ -279,7 +256,6 @@
                         <th class="text-center">Backout</th>
                         <th class="text-center">Hold</th>
                         <th class="text-center">Low Priority</th>
-                        <th class="text-center">Placement Offer</th>
                         <th class="text-center">(blank)</th>
                         <th class="text-center">Grand Total</th>
                         <th class="text-center">Total Interviews</th>
@@ -309,13 +285,6 @@
                         </td>
                         <td class="text-center">
                             <span class="badge badge-subtle">{{ expert.status_low_priority }}</span>
-                        </td>
-                        <td class="text-center">
-                            {% if po_counts_locked %}
-                            <span class="badge badge-subtle">Locked</span>
-                            {% else %}
-                            <span class="badge badge-subtle">{{ expert.po_count }}</span>
-                            {% endif %}
                         </td>
                         <td class="text-center">
                             <span class="badge badge-subtle">{{ expert.status_blank }}</span>

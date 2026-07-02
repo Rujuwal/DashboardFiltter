@@ -7,13 +7,13 @@ import pandas as pd
 import re
 import json
 from io import BytesIO
-from po_security import (
-    current_request_next_url,
-    filter_records_for_po_access,
-    get_current_po_access,
-    po_pin_security_enabled,
+from services.interview_metrics import (
+    EXCLUDED_ACTUAL_ROUNDS,
+    build_interview_date_match,
+    fetch_completed_interviews,
+    parse_interview_date,
+    stage_counts_by_group,
 )
-from routes.po import fetch_po_records, get_supabase_client
 from services.reference_data import (
     get_active_expert_emails,
     get_active_task_experts,
@@ -163,21 +163,13 @@ def get_date_filter_strings():
 
 
 def build_received_date_match(start_date="", end_date=""):
-    date_match = {}
-    if start_date or end_date:
-        date_filter = {}
-        if start_date:
-            date_filter["$gte"] = f"{start_date}T00:00:00" if "T" not in start_date else start_date
-        if end_date:
-            date_filter["$lte"] = f"{end_date}T23:59:59" if "T" not in end_date else end_date
-        if date_filter:
-            date_match["receivedDateTime"] = date_filter
-    return date_match
+    # Filters on the real interview date (Date of Interview), not receivedDateTime.
+    return build_interview_date_match(start_date, end_date)
 
 
 def build_interview_stats_match(start_date="", end_date=""):
     return {
-        **build_received_date_match(start_date, end_date),
+        **build_interview_date_match(start_date, end_date),
         "actualRound": {"$nin": INTERVIEW_STATS_ROUND_EXCLUSIONS},
         "assignedTo": {"$type": "string", "$ne": ""},
     }
@@ -368,213 +360,15 @@ def analytics_cache_key(name, *parts):
     return f"analytics:{ANALYTICS_CACHE_VERSION}:{name}:{serialized}"
 
 
-def get_po_access_cache_token():
-    access = get_current_po_access()
-    if po_pin_security_enabled() and not access:
-        return "locked"
-    if not access:
-        return "public"
-    return json.dumps(access, sort_keys=True, default=str)
-
-
-def get_po_count_maps(start_date="", end_date=""):
-    access = get_current_po_access()
-    cache_key = analytics_cache_key(
-        "po-count-maps",
-        start_date,
-        end_date,
-        get_po_access_cache_token(),
-    )
-    cached = current_app.cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    if po_pin_security_enabled() and not access:
-        value = {
-            "state": "locked",
-            "team_counts": {},
-            "expert_counts": {},
-            "total": None,
-        }
-        current_app.cache.set(cache_key, value, timeout=300)
-        return value
-
-    try:
-        records = filter_records_for_po_access(fetch_po_records(get_supabase_client()), access)
-        start_value = start_date[:10] if start_date else ""
-        end_value = end_date[:10] if end_date else ""
-
-        filtered_records = [
-            record
-            for record in records
-            if (
-                not start_value
-                or (
-                    record.get("mail_date")
-                    and str(record.get("mail_date")) >= start_value
-                )
-            )
-            and (
-                not end_value
-                or (
-                    record.get("mail_date")
-                    and str(record.get("mail_date")) <= end_value
-                )
-            )
-        ]
-
-        team_counts = Counter(
-            record.get("team_name")
-            for record in filtered_records
-            if record.get("team_name")
-        )
-        expert_counts = Counter(
-            (record.get("expert_email") or "").lower()
-            for record in filtered_records
-            if record.get("expert_email")
-        )
-
-        value = {
-            "state": "ready",
-            "team_counts": dict(team_counts),
-            "expert_counts": dict(expert_counts),
-            "total": len(filtered_records),
-        }
-    except Exception:
-        value = {
-            "state": "unavailable",
-            "team_counts": {},
-            "expert_counts": {},
-            "total": None,
-        }
-
-    current_app.cache.set(cache_key, value, timeout=300)
-    return value
-
-
-def get_candidate_client_maps(start_date="", end_date="", filter_team=None, filter_expert=None):
-    cache_key = analytics_cache_key(
-        "candidate-client-maps",
-        start_date,
-        end_date,
-        filter_team,
-        filter_expert,
-        get_po_access_cache_token(),
-    )
-    cached = current_app.cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    access = get_current_po_access()
-    if po_pin_security_enabled() and not access:
-        value = {
-            "state": "locked",
-            "clients_by_candidate": {},
-            "client_counts_by_candidate": {},
-            "total_unique_clients": None,
-            "total_po_records": None,
-            "error": "",
-        }
-        current_app.cache.set(cache_key, value, timeout=300)
-        return value
-
-    try:
-        records = filter_records_for_po_access(fetch_po_records(get_supabase_client()), access)
-        start_value = start_date[:10] if start_date else ""
-        end_value = end_date[:10] if end_date else ""
-        filter_expert_key = normalize_lookup_text(filter_expert)
-
-        filtered_records = [
-            record
-            for record in records
-            if (
-                not start_value
-                or (
-                    record.get("mail_date")
-                    and str(record.get("mail_date")) >= start_value
-                )
-            )
-            and (
-                not end_value
-                or (
-                    record.get("mail_date")
-                    and str(record.get("mail_date")) <= end_value
-                )
-            )
-            and (
-                not filter_team
-                or record.get("team_name") == filter_team
-            )
-            and (
-                not filter_expert_key
-                or normalize_lookup_text(record.get("expert_email")) == filter_expert_key
-            )
-        ]
-
-        client_counts_by_candidate = defaultdict(Counter)
-        all_clients = set()
-
-        for record in filtered_records:
-            candidate_key = record.get("candidate_name_key") or normalize_lookup_text(record.get("candidate_name"))
-            client_name = clean_text(record.get("client"))
-            if not candidate_key or not client_name:
-                continue
-
-            client_counts_by_candidate[candidate_key][client_name] += 1
-            all_clients.add(client_name)
-
-        value = {
-            "state": "ready",
-            "clients_by_candidate": {
-                candidate_key: sorted(counter.keys())
-                for candidate_key, counter in client_counts_by_candidate.items()
-            },
-            "client_counts_by_candidate": {
-                candidate_key: dict(
-                    sorted(counter.items(), key=lambda item: (-item[1], item[0]))
-                )
-                for candidate_key, counter in client_counts_by_candidate.items()
-            },
-            "total_unique_clients": len(all_clients),
-            "total_po_records": len(filtered_records),
-            "error": "",
-        }
-    except Exception as exc:
-        value = {
-            "state": "unavailable",
-            "clients_by_candidate": {},
-            "client_counts_by_candidate": {},
-            "total_unique_clients": 0,
-            "total_po_records": 0,
-            "error": str(exc) or "Unable to load PO-backed client data.",
-        }
-
-    current_app.cache.set(cache_key, value, timeout=300)
-    return value
-
-
 def build_task_query(start_date='', end_date=''):
-    """Build base query for taskBody collection."""
+    """Base query for taskBody: completed interviews filtered by the real interview date
+    (Date of Interview), excluding On-Demand/AI rounds."""
     match_filters = {
         "status": "Completed",
         "assignedTo": {"$type": "string", "$ne": ""},
-        "actualRound": {"$nin": ["On demand", "On Demand or AI Interview"]},
+        "actualRound": {"$nin": EXCLUDED_ACTUAL_ROUNDS},
     }
-
-    if start_date or end_date:
-        date_filter = {}
-        if start_date:
-            # Convert date string to ISO format if needed
-            if 'T' not in start_date:
-                start_date = f"{start_date}T00:00:00"
-            date_filter["$gte"] = start_date
-        if end_date:
-            if 'T' not in end_date:
-                end_date = f"{end_date}T23:59:59"
-            date_filter["$lte"] = end_date
-        if date_filter:
-            match_filters["receivedDateTime"] = date_filter
-
+    match_filters.update(build_interview_date_match(start_date, end_date))
     return match_filters
 
 
@@ -610,42 +404,13 @@ def get_expert_funnel_data(db, start_date='', end_date='', filter_team=None, fil
 
     expert_team_map, teams_map = get_expert_team_map(db)
 
-    # Build query for taskBody collection
-    match_filters = build_task_query(start_date, end_date)
-
-    # Aggregate by expert and raw round in Mongo first so we process far fewer rows in Python.
-    round_rows = list(
-        db.taskBody.aggregate(
-            [
-                {"$match": match_filters},
-                {
-                    "$group": {
-                        "_id": {
-                            "expert": "$assignedTo",
-                            "round": "$actualRound",
-                        },
-                        "count": {"$sum": 1},
-                    }
-                },
-            ],
-            allowDiskUse=True,
-        )
+    # Classify completed interviews on the real interview date (Date of Interview),
+    # excluding On-Demand/AI, and deduping loop rounds per (candidate, end client) --
+    # identical rules to the daily conversion brief / PO report.
+    records = fetch_completed_interviews(db, start_date, end_date)
+    expert_stage_counts = stage_counts_by_group(
+        records, lambda r: normalize_lookup_text(r.get("assignedTo"))
     )
-
-    # Normalize raw rounds into funnel stages per expert.
-    expert_stage_counts = defaultdict(lambda: Counter())
-
-    for row in round_rows:
-        row_id = row.get("_id") or {}
-        expert = normalize_lookup_text(row_id.get("expert"))
-        if not expert:
-            continue
-
-        stage = normalize_round(row_id.get("round"))
-        if not stage:
-            continue
-
-        expert_stage_counts[expert][stage] += row.get("count", 0)
 
     # Build expert stats with filtration
     expert_stats = []
@@ -691,7 +456,6 @@ def get_candidate_funnel_data(
         filter_team,
         filter_expert,
         filter_candidate,
-        get_po_access_cache_token(),
     )
     cached = cache.get(cache_key)
     if cached is not None:
@@ -700,76 +464,44 @@ def get_candidate_funnel_data(
     filter_expert_key = normalize_lookup_text(filter_expert)
     filter_candidate_key = normalize_lookup_text(filter_candidate)
     expert_team_map, teams_map = get_expert_team_map(db)
-    client_data = get_candidate_client_maps(start_date, end_date, filter_team, filter_expert)
 
-    match_filters = build_task_query(start_date, end_date)
-    if filter_candidate_key:
-        match_filters["$expr"] = {
-            "$eq": [
-                mongo_normalized_text("Candidate Name"),
-                filter_candidate_key,
-            ]
-        }
+    # Interview-date basis, On-Demand/AI excluded, loops deduped per (candidate, end client).
+    records = fetch_completed_interviews(db, start_date, end_date)
 
-    round_rows = list(
-        db.taskBody.aggregate(
-            [
-                {"$match": match_filters},
-                {
-                    "$group": {
-                        "_id": {
-                            "candidate": "$Candidate Name",
-                            "expert": "$assignedTo",
-                            "round": "$actualRound",
-                        },
-                        "count": {"$sum": 1},
-                    }
-                },
-            ],
-            allowDiskUse=True,
-        )
-    )
+    def _team_for(record):
+        expert_key = normalize_lookup_text(record.get("assignedTo"))
+        return expert_key, (expert_team_map.get(expert_key, "Unmapped") if expert_key else "Unmapped")
 
-    candidate_stage_counts = defaultdict(lambda: Counter())
-    candidate_name_counts = defaultdict(Counter)
-    candidate_expert_counts = defaultdict(Counter)
-    candidate_team_counts = defaultdict(Counter)
-
-    for row in round_rows:
-        row_id = row.get("_id") or {}
-        candidate_name = clean_text(row_id.get("candidate"))
-        candidate_key = normalize_lookup_text(candidate_name)
-        expert_key = normalize_lookup_text(row_id.get("expert"))
-        if not candidate_key:
-            continue
-
-        team_name = expert_team_map.get(expert_key, "Unmapped") if expert_key else "Unmapped"
+    kept = []
+    for record in records:
+        expert_key, team_name = _team_for(record)
         if filter_team and team_name != filter_team:
             continue
         if filter_expert_key and expert_key != filter_expert_key:
             continue
-
-        stage = normalize_round(row_id.get("round"))
-        if not stage:
+        if filter_candidate_key and record.get("candidate_key") != filter_candidate_key:
             continue
+        kept.append(record)
 
-        count = row.get("count", 0)
-        candidate_stage_counts[candidate_key][stage] += count
-        candidate_name_counts[candidate_key][candidate_name or "Unknown"] += count
-
+    candidate_stage_counts = stage_counts_by_group(kept, lambda r: r.get("candidate_key"))
+    candidate_name_counts = defaultdict(Counter)
+    candidate_expert_counts = defaultdict(Counter)
+    candidate_team_counts = defaultdict(Counter)
+    for record in kept:
+        candidate_key = record.get("candidate_key")
+        if not candidate_key:
+            continue
+        candidate_name_counts[candidate_key][clean_text(record.get("Candidate Name")) or "Unknown"] += 1
+        expert_key, team_name = _team_for(record)
         if expert_key:
-            candidate_expert_counts[candidate_key][expert_key] += count
-        if team_name:
-            candidate_team_counts[candidate_key][team_name] += count
+            candidate_expert_counts[candidate_key][expert_key] += 1
+        candidate_team_counts[candidate_key][team_name] += 1
 
-    client_counts_by_candidate = client_data.get("client_counts_by_candidate", {})
     candidate_stats = []
-
     for candidate_key, stages in candidate_stage_counts.items():
         name_counter = candidate_name_counts.get(candidate_key, Counter())
         expert_counter = candidate_expert_counts.get(candidate_key, Counter())
         team_counter = candidate_team_counts.get(candidate_key, Counter())
-        client_counts = client_counts_by_candidate.get(candidate_key, {})
         funnel_metrics = build_funnel_metrics(stages)
         activity_total = sum(stages.values())
 
@@ -780,9 +512,6 @@ def get_candidate_funnel_data(
             "lead_expert": expert_counter.most_common(1)[0][0] if expert_counter else "",
             "teams_count": len(team_counter),
             "experts_count": len(expert_counter),
-            "unique_clients": len(client_counts) if client_data.get("state") == "ready" else None,
-            "po_count": sum(client_counts.values()) if client_data.get("state") == "ready" else None,
-            "client_names": sorted(client_counts.keys()),
             "activity_total": activity_total,
             **funnel_metrics,
         })
@@ -801,6 +530,8 @@ def get_candidate_funnel_data(
     for idx, stat in enumerate(candidate_stats):
         stat["rank"] = idx + 1
 
+    # PO/client data removed from the dashboard.
+    client_data = {"state": "disabled", "client_counts_by_candidate": {}}
     value = (candidate_stats, teams_map, client_data)
     cache.set(cache_key, value, timeout=300)
     return value
@@ -829,12 +560,17 @@ def get_candidate_detail_data(
     expert_team_map, _ = get_expert_team_map(db)
     filter_expert_key = normalize_lookup_text(filter_expert)
     task_query = build_task_query(start_date, end_date)
-    task_query["$expr"] = {
+    # Merge the candidate-name match with any existing interview-date $expr (don't clobber).
+    candidate_expr = {
         "$eq": [
             mongo_normalized_text("Candidate Name"),
             candidate_key,
         ]
     }
+    if "$expr" in task_query:
+        task_query["$expr"] = {"$and": [task_query["$expr"], candidate_expr]}
+    else:
+        task_query["$expr"] = candidate_expr
 
     raw_tasks = list(
         db.taskBody.find(
@@ -1093,18 +829,9 @@ def candidate_analytics():
                 filter_team,
                 filter_expert,
             )
-            client_distribution = client_data.get("client_counts_by_candidate", {}).get(selected_candidate, {})
             candidate_tasks = detail_data.get("candidate_tasks", [])
             candidate_detail["round_distribution"] = detail_data.get("round_distribution", {})
             candidate_detail["expert_distribution"] = detail_data.get("expert_distribution", {})
-            candidate_detail["client_distribution"] = client_distribution
-            candidate_detail["client_names"] = sorted(client_distribution.keys())
-            candidate_detail["unique_clients"] = (
-                len(client_distribution) if client_data.get("state") == "ready" else None
-            )
-            candidate_detail["po_count"] = (
-                sum(client_distribution.values()) if client_data.get("state") == "ready" else None
-            )
 
     return render_template(
         'candidate_analytics.html',
@@ -1121,12 +848,6 @@ def candidate_analytics():
         start_date=start_date,
         end_date=end_date,
         total_candidates=len(candidate_stats),
-        po_state=client_data.get("state", "ready"),
-        po_counts_locked=client_data.get("state") == "locked",
-        po_unlock_url=url_for('po.po_access', next=current_request_next_url()) if client_data.get("state") == "locked" else '',
-        po_client_error=client_data.get("error", ''),
-        total_unique_clients=client_data.get("total_unique_clients"),
-        total_po_records=client_data.get("total_po_records"),
     )
 
 
@@ -1229,7 +950,6 @@ def interview_stats():
 
     expert_team_map, teams_map = get_expert_team_map(db)
     teams_list, all_experts, _ = get_interview_stats_filter_options(db)
-    po_counts = get_po_count_maps(start_date, end_date)
 
     cache_key = analytics_cache_key(
         "interview-stats-page",
@@ -1237,7 +957,6 @@ def interview_stats():
         end_date,
         filter_team,
         filter_expert,
-        get_po_access_cache_token(),
     )
     cached = current_app.cache.get(cache_key)
     if cached is None:
@@ -1247,8 +966,6 @@ def interview_stats():
             end_date,
             expert_team_map=expert_team_map,
         )
-        po_team_counts = po_counts["team_counts"]
-        po_expert_counts = po_counts["expert_counts"]
 
         team_data = []
         expert_data = []
@@ -1268,7 +985,6 @@ def interview_stats():
                 'rescheduled': data["RescheduledCount"],
                 'notdone': data["NotDoneCount"],
                 'total': data["TotalInterviews"],
-                'po_count': po_expert_counts.get(expert_key, 0),
             }
             team_members_map[team_name].append(member_stat)
             expert_data.append({
@@ -1292,7 +1008,6 @@ def interview_stats():
                 'rescheduled': sum(member['rescheduled'] for member in member_stats),
                 'notdone': sum(member['notdone'] for member in member_stats),
                 'total': sum(member['total'] for member in member_stats),
-                'po_count': po_team_counts.get(team_name, 0),
                 'members': sorted(member_stats, key=lambda x: x['total'], reverse=True)
             })
 
@@ -1311,7 +1026,6 @@ def interview_stats():
             'overall_rescheduled': sum(t['rescheduled'] for t in team_data),
             'overall_notdone': sum(t['notdone'] for t in team_data),
             'overall_total': sum(t['total'] for t in team_data),
-            'po_counts_state': po_counts['state'],
             'teams_map_view': teams_map_view,
         }
         current_app.cache.set(cache_key, cached, timeout=300)
@@ -1332,7 +1046,6 @@ def interview_stats():
         overall_rescheduled=cached['overall_rescheduled'],
         overall_notdone=cached['overall_notdone'],
         overall_total=cached['overall_total'],
-        po_counts_state=cached['po_counts_state'],
     )
 
 @lru_cache(maxsize=4096)
@@ -1513,6 +1226,11 @@ def parse_interview_date_from_subject(subject, reference_date=None):
 
 
 def get_effective_interview_date(record):
+    # Prefer the authoritative Date of Interview field (MM/DD/YYYY) used by the daily brief.
+    doi = parse_interview_date(record.get("Date of Interview"))
+    if doi:
+        return doi.isoformat()
+
     subject_date = parse_interview_date_from_subject(
         record.get("subject", ""),
         reference_date=record.get("receivedDateTime"),
@@ -1548,6 +1266,7 @@ def get_interview_activity_records(
                 "receivedDateTime": 1,
                 "actualRound": 1,
                 "Candidate Name": 1,
+                "Date of Interview": 1,
                 "_id": 0,
             },
         ).limit(50000)

@@ -38,6 +38,8 @@ app.register_blueprint(teams_bp, url_prefix="/teams")
 app.register_blueprint(candidates_bp, url_prefix="/candidates")
 app.register_blueprint(analytics_bp, url_prefix="/analytics")
 app.register_blueprint(kpi_bp, url_prefix="/kpi")
+# PO blueprint kept registered but unlinked from the UI (no nav tab / cards / columns).
+# Reachable only by direct URL and still PIN-gated. Remove entirely for a full teardown.
 app.register_blueprint(po_bp, url_prefix="/po")
 
 # Start the optional PO Kafka consumer in persistent Flask runtimes.
