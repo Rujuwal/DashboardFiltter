@@ -30,7 +30,7 @@ from services.team_management import (
 )
 
 analytics_bp = Blueprint('analytics', __name__)
-ANALYTICS_CACHE_VERSION = "v9"
+ANALYTICS_CACHE_VERSION = "v10"
 
 # Round mapping from actualRound to funnel stages
 ROUND_BUCKETS = {
@@ -687,6 +687,48 @@ def get_team_funnel_data(db, start_date='', end_date='', filter_team=None, filte
     return value
 
 
+def get_active_candidate_stats_by_expert(db):
+    """
+    Per-expert live caseload: how many candidates they currently have Active in
+    candidateDetails, and what those candidates' top technologies are. This is
+    the simple replacement for the old Expert Activity page.
+    """
+    cache_key = analytics_cache_key("active-candidate-stats")
+    cache = getattr(current_app, "cache", None) if has_app_context() else None
+    if cache:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+    rows = list(db.candidateDetails.aggregate([
+        {"$match": {"status": "Active", "Expert": {"$type": "string", "$ne": ""}}},
+        {"$group": {
+            "_id": {"expert": {"$toLower": "$Expert"}, "tech": {"$ifNull": ["$Technology", "Unspecified"]}},
+            "n": {"$sum": 1},
+        }},
+    ]))
+
+    by_expert = defaultdict(Counter)
+    for row in rows:
+        row_id = row.get("_id") or {}
+        expert = row_id.get("expert")
+        if not expert:
+            continue
+        tech = clean_text(row_id.get("tech")) or "Unspecified"
+        by_expert[expert][tech] += row.get("n", 0)
+
+    stats = {}
+    for expert, tech_counts in by_expert.items():
+        stats[expert] = {
+            "active_count": sum(tech_counts.values()),
+            "top_technologies": ", ".join(f"{name} ({n})" for name, n in tech_counts.most_common(3)),
+        }
+
+    if cache:
+        cache.set(cache_key, stats, timeout=300)
+    return stats
+
+
 @analytics_bp.route('/experts')
 def expert_analytics():
     db = get_db()
@@ -699,6 +741,13 @@ def expert_analytics():
     teams_list, all_experts, teams_map = get_analytics_filter_options(completed_only=True)
     # Get expert funnel data
     expert_stats, _ = get_expert_funnel_data(db, start_date, end_date, filter_team, filter_expert)
+
+    # Attach live active-candidate caseload (count + top technologies)
+    active_candidate_stats = get_active_candidate_stats_by_expert(db)
+    for stat in expert_stats:
+        extra = active_candidate_stats.get(stat['expert'], {})
+        stat['active_candidates'] = extra.get('active_count', 0)
+        stat['candidate_types'] = extra.get('top_technologies', '')
 
     # Get selected expert detail
     selected_expert = normalize_lookup_text(request.args.get('view_expert', ''))
@@ -717,6 +766,9 @@ def expert_analytics():
             single_stats, _ = get_expert_funnel_data(db, start_date, end_date, None, selected_expert)
             if single_stats:
                 expert_detail = single_stats[0]
+                extra = active_candidate_stats.get(expert_detail['expert'], {})
+                expert_detail['active_candidates'] = extra.get('active_count', 0)
+                expert_detail['candidate_types'] = extra.get('top_technologies', '')
 
         if expert_detail:
             detail_cache_key = analytics_cache_key("expert-detail", start_date, end_date, selected_expert)

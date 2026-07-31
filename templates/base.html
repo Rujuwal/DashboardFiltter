@@ -58,16 +58,6 @@
             <nav class="sidebar-nav">
                 <div class="nav-section">
                     <span class="nav-section-title">Analytics</span>
-                    <a href="{{ url_for('dashboard.index') }}"
-                        class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <rect x="3" y="3" width="7" height="7" rx="1" />
-                            <rect x="14" y="3" width="7" height="4" rx="1" />
-                            <rect x="3" y="14" width="7" height="7" rx="1" />
-                            <rect x="14" y="11" width="7" height="10" rx="1" />
-                        </svg>
-                        <span>Dashboard</span>
-                    </a>
                     <a href="{{ url_for('analytics.expert_analytics') }}"
                         class="nav-link {% if request.endpoint == 'analytics.expert_analytics' %}active{% endif %}">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -116,33 +106,6 @@
                             <line x1="16" y1="17" x2="8" y2="17" />
                         </svg>
                         <span>Interview Records</span>
-                    </a>
-                    <a href="{{ url_for('candidates.expert_candidate_activity') }}"
-                        class="nav-link {% if request.endpoint == 'candidates.expert_candidate_activity' %}active{% endif %}">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="M20 8v6M23 11h-6" />
-                        </svg>
-                        <span>Expert Activity</span>
-                    </a>
-                    <a href="{{ url_for('candidates.candidate_lookup') }}"
-                        class="nav-link {% if request.endpoint == 'candidates.candidate_lookup' %}active{% endif %}">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <circle cx="11" cy="11" r="7" />
-                            <path d="m21 21-4.35-4.35" />
-                        </svg>
-                        <span>Candidate Lookup</span>
-                    </a>
-                    <a href="{{ url_for('teams.manage') }}"
-                        class="nav-link {% if request.endpoint == 'teams.manage' %}active{% endif %}">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <rect x="3" y="3" width="7" height="7" rx="2" />
-                            <rect x="14" y="3" width="7" height="7" rx="2" />
-                            <rect x="3" y="14" width="7" height="7" rx="2" />
-                            <rect x="14" y="14" width="7" height="7" rx="2" />
-                        </svg>
-                        <span>Team Management</span>
                     </a>
                     <a href="{{ url_for('analytics.export_center') }}"
                         class="nav-link {% if request.endpoint == 'analytics.export_center' %}active{% endif %}">

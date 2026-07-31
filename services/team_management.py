@@ -3,7 +3,7 @@ import re
 
 from flask import current_app, has_app_context
 
-from db import get_db, get_teams_db
+from db import get_db
 
 PO_NAME_ALIASES = {
     "Anusree Vasudevan": "Anusree Vasudevan",
@@ -14,7 +14,7 @@ PO_NAME_ALIASES = {
 PO_PLACEHOLDER_NAMES = {"n/a", "na", "not applicable", "none", "null", "nil"}
 NAME_MATCH_THRESHOLD = 0.84
 NAME_MATCH_MARGIN = 0.05
-TEAM_MANAGEMENT_CACHE_VERSION = "v2"
+TEAM_MANAGEMENT_CACHE_VERSION = "v3"
 
 
 def clean_text(value):
@@ -99,7 +99,7 @@ def _name_match_score(left, right):
     )
 
 
-def _derive_names_from_email(email):
+def derive_names_from_email(email):
     local_part = clean_text(email).split("@", 1)[0]
     if not local_part:
         return []
@@ -115,13 +115,6 @@ def _derive_names_from_email(email):
     return [normalize_person_name(candidate) for candidate in candidates if normalize_person_name(candidate)]
 
 
-def _team_lead_from_team_name(team_name):
-    cleaned = clean_text(team_name)
-    if cleaned.lower().startswith("team "):
-        cleaned = cleaned[5:]
-    return normalize_person_name(cleaned)
-
-
 def _index_entry(index, key, entry):
     if not key:
         return
@@ -130,11 +123,17 @@ def _index_entry(index, key, entry):
 
 
 def get_team_management_directory():
+    """
+    Directory of every known user (expert, team lead, manager, etc.) resolved
+    purely from ``db.users`` -- no separate teams database.
+
+    Each user's team is their resolved team-lead name: their own ``teamLead``
+    field (falling back to ``TeamLead`` / ``Team Lead`` / ``team``), except a
+    user whose own role is "teamLead" is grouped under their own name.
+    """
     def build():
-        teams_db = get_teams_db()
         main_db = get_db()
 
-        team_docs = list(teams_db.teams.find({}, {"_id": 0, "name": 1, "members": 1}))
         users = list(
             main_db.users.find(
                 {},
@@ -142,44 +141,47 @@ def get_team_management_directory():
                     "_id": 0,
                     "email": 1,
                     "manager": 1,
+                    "role": 1,
                     "teamLead": 1,
+                    "TeamLead": 1,
+                    "Team Lead": 1,
+                    "team": 1,
                     "profile.displayName": 1,
                 },
             )
         )
 
-        team_by_email = {}
-        for team_doc in team_docs:
-            team_name = clean_text(team_doc.get("name"))
-            for member in team_doc.get("members", []):
-                email = clean_text(member).lower()
-                if email:
-                    team_by_email[email] = team_name
-
-        users_by_email = {}
-        for user in users:
-            email = clean_text(user.get("email")).lower()
-            if email:
-                users_by_email[email] = user
-
         entries = []
         exact_index = {}
         token_index = {}
 
-        all_emails = sorted(set(team_by_email.keys()) | set(users_by_email.keys()))
-        for email in all_emails:
-            user = users_by_email.get(email, {})
-            team_name = team_by_email.get(email, "")
+        for user in users:
+            email = clean_text(user.get("email")).lower()
+            if not email:
+                continue
+
             display_name = normalize_person_name((user.get("profile") or {}).get("displayName"))
-            derived_names = _derive_names_from_email(email)
+            derived_names = derive_names_from_email(email)
             expert_name = display_name or (derived_names[0] if derived_names else "")
+
+            role = clean_text(user.get("role")).lower()
+            if role and role != "expert":
+                team_lead_name = expert_name or normalize_person_name(email)
+            else:
+                raw_team_lead = (
+                    user.get("teamLead")
+                    or user.get("TeamLead")
+                    or user.get("Team Lead")
+                    or user.get("team")
+                )
+                team_lead_name = normalize_person_name(raw_team_lead) if raw_team_lead else ""
 
             entry = {
                 "email": email,
                 "expert_name": expert_name,
                 "manager_name": normalize_person_name(user.get("manager")),
-                "team_lead_name": normalize_person_name(user.get("teamLead")) or _team_lead_from_team_name(team_name),
-                "team_name": team_name,
+                "team_lead_name": team_lead_name,
+                "team_name": team_lead_name,
                 "lookup_keys": set(),
             }
 
@@ -254,7 +256,7 @@ def get_management_snapshot(expert_value, fallback_manager="", fallback_team_lea
 
     expert_name = normalize_person_name(expert_value)
     if "@" in clean_text(expert_value):
-        derived_names = _derive_names_from_email(expert_value)
+        derived_names = derive_names_from_email(expert_value)
         if derived_names:
             expert_name = derived_names[0]
 

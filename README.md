@@ -57,9 +57,6 @@ DashboardFiltter/
 │   └── analytics.py      # Analytics and reporting
 ├── templates/            # HTML templates
 │   ├── base.html
-│   ├── index.html
-│   ├── teams.html
-│   ├── candidate_lookup.html
 │   ├── interview_records.html
 │   ├── interview_stats.html
 │   ├── team_analytics.html
@@ -83,21 +80,16 @@ DashboardFiltter/
 - Recent activity feed
 - Monthly trends visualization
 
-### Team Management
-- Create and manage interview teams
-- Assign experts to teams
-- View team performance metrics
-- Track team-wise interview completion
-
-### Candidate Lookup
-- Search candidates by various criteria
-- View detailed candidate profiles
-- Track interview history
-- Monitor workflow status
+### Team Assignment
+- Team and team-lead mapping is derived directly from `users.teamLead`
+  (falling back to `TeamLead` / `Team Lead` / `team`) in the main MongoDB
+  cluster -- no separate teams database to manage.
 
 ### Analytics
-- **Expert Analytics**: Individual expert performance metrics
+- **Expert Analytics**: Individual expert performance metrics, plus live
+  active-candidate caseload (count + top candidate technologies)
 - **Team Analytics**: Team-based interview statistics
+- **Candidate Analytics**: Candidate funnel performance
 - **Funnel Analytics**: Conversion rates across interview stages
 - **Export Center**: Download data in Excel format
 
@@ -115,8 +107,6 @@ DashboardFiltter/
 |----------|----------|-------------|---------|
 | `MONGO_URI` | Yes | MongoDB connection string | `mongodb+srv://...` |
 | `MONGO_DB` | Yes | Main database name | `interview_db` |
-| `TEAMS_MONGO_URI` | No | Teams database connection (defaults to MONGO_URI) | `mongodb+srv://...` |
-| `TEAMS_MONGO_DB` | No | Teams database name (defaults to MONGO_DB) | `teams_db` |
 | `FLASK_DEBUG` | No | Enable debug mode (default: True) | `False` |
 | `FLASK_PORT` | No | Application port (default: 5000) | `8080` |
 

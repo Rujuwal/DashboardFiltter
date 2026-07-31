@@ -7,7 +7,6 @@ load_dotenv()
 from flask import Flask, render_template, jsonify, request
 from flask_caching import Cache
 from routes.dashboard import dashboard_bp
-from routes.teams import teams_bp
 from routes.candidates import candidates_bp
 from routes.analytics import analytics_bp
 from routes.kpi import kpi_bp
@@ -34,7 +33,6 @@ app.cache = cache
 
 # Register Blueprints
 app.register_blueprint(dashboard_bp)
-app.register_blueprint(teams_bp, url_prefix="/teams")
 app.register_blueprint(candidates_bp, url_prefix="/candidates")
 app.register_blueprint(analytics_bp, url_prefix="/analytics")
 app.register_blueprint(kpi_bp, url_prefix="/kpi")

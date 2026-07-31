@@ -211,10 +211,17 @@
                     <div class="profile-meta">
                         <span class="badge badge-info">{{ expert_detail.team }}</span>
                         <span class="badge badge-subtle">Rank #{{ expert_detail.rank }}</span>
+                        {% if expert_detail.candidate_types %}
+                        <span class="badge badge-subtle">{{ expert_detail.candidate_types }}</span>
+                        {% endif %}
                     </div>
                 </div>
             </div>
             <div class="profile-stats">
+                <div class="profile-stat">
+                    <span class="profile-stat-value">{{ expert_detail.active_candidates or 0 }}</span>
+                    <span class="profile-stat-label">Active Candidates</span>
+                </div>
                 <div class="profile-stat">
                     <span class="profile-stat-value">{{ expert_detail.interview_count }}</span>
                     <span class="profile-stat-label">Interviews</span>
@@ -404,6 +411,8 @@
                         <th>Rank</th>
                         <th>Team</th>
                         <th>Expert</th>
+                        <th>Active Candidates</th>
+                        <th>Candidate Types</th>
                         <th>Interviews</th>
                         <th>Screening</th>
                         <th>1st</th>
@@ -434,6 +443,8 @@
                                 <span>{{ stat.expert.split('@')[0] }}</span>
                             </div>
                         </td>
+                        <td class="text-center"><span class="badge badge-success">{{ stat.active_candidates }}</span></td>
+                        <td class="text-muted">{{ stat.candidate_types or '—' }}</td>
                         <td class="text-bold">{{ stat.interview_count }}</td>
                         <td class="stage-cell screening">{{ stat.screening }}</td>
                         <td class="stage-cell first">{{ stat.first }}</td>
