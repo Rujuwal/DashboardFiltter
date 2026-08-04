@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from db import get_db, get_teams_db
+from db import get_db
 from services.reference_data import (
     get_active_expert_emails,
     get_active_task_experts,
@@ -29,7 +29,6 @@ def start_startup_warmup(app):
         try:
             with app.app_context():
                 get_db().command("ping")
-                get_teams_db().command("ping")
                 get_teams_reference()
                 get_active_expert_emails()
                 get_active_task_experts(completed_only=False)
@@ -43,7 +42,6 @@ def start_startup_warmup(app):
                     "/analytics/interview-stats",
                     "/analytics/interview-records",
                     "/candidates/active",
-                    "/candidates/expert-activity",
                     "/kpi/sidebar",
                 ):
                     response = client.get(path)

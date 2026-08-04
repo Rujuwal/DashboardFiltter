@@ -6,25 +6,6 @@
 {% block content %}
 {% set hero_candidate = candidate_detail or (candidate_stats[0] if candidate_stats else None) %}
 <div class="analytics-page report-page">
-    {% if po_counts_locked %}
-    <div class="card error-card" style="margin-bottom: 20px;">
-        <div class="card-header">
-            <h3 class="card-title">Unique Client Counts Are Locked</h3>
-        </div>
-        <p class="muted-text">
-            Candidate client coverage comes from the PO dashboard. Unlock PO access first, then this page will show real unique-client counts.
-            <a href="{{ po_unlock_url }}" class="candidate-link">Unlock PO Access</a>
-        </p>
-    </div>
-    {% elif po_state == 'unavailable' and po_client_error %}
-    <div class="card error-card" style="margin-bottom: 20px;">
-        <div class="card-header">
-            <h3 class="card-title">Client Data Could Not Load</h3>
-        </div>
-        <p class="muted-text">{{ po_client_error }}</p>
-    </div>
-    {% endif %}
-
     <section class="card report-hero">
         <div class="report-copy">
             <span class="report-eyebrow">Candidate Conversion</span>
@@ -55,27 +36,6 @@
                 <span class="report-highlight-label">Interviews Tracked</span>
                 <span class="report-highlight-value">{{ candidate_detail.interview_count if candidate_detail else candidate_stats|sum(attribute='interview_count') }}</span>
                 <span class="report-highlight-meta">{{ start_date or 'All time' }} to {{ end_date or 'Today' }}</span>
-            </div>
-            <div class="report-highlight">
-                <span class="report-highlight-label">Unique Clients</span>
-                <span class="report-highlight-value">
-                    {% if po_state == 'ready' %}
-                    {{ hero_candidate.unique_clients if hero_candidate and hero_candidate.unique_clients is not none else 0 }}
-                    {% elif po_counts_locked %}
-                    Locked
-                    {% else %}
-                    N/A
-                    {% endif %}
-                </span>
-                <span class="report-highlight-meta">
-                    {% if po_state == 'ready' and hero_candidate %}
-                    {{ hero_candidate.po_count or 0 }} matched PO records in the current scope
-                    {% elif po_counts_locked %}
-                    Unlock PO access to populate client coverage
-                    {% else %}
-                    PO-backed client coverage is currently unavailable
-                    {% endif %}
-                </span>
             </div>
             <div class="report-highlight">
                 <span class="report-highlight-label">Screening to 1st</span>
@@ -175,20 +135,6 @@
                 <span class="stat-value">{{ candidate_stats|sum(attribute='interview_count') }}</span>
             </div>
         </div>
-        <div class="stat-card">
-            <div class="stat-content">
-                <span class="stat-label">Unique Clients</span>
-                <span class="stat-value">
-                    {% if po_state == 'ready' %}
-                    {{ total_unique_clients }}
-                    {% elif po_counts_locked %}
-                    Locked
-                    {% else %}
-                    N/A
-                    {% endif %}
-                </span>
-            </div>
-        </div>
     </div>
 
     <div class="card">
@@ -218,8 +164,6 @@
                         <th>Loop to Final %</th>
                         <th>Final</th>
                         <th>Total Interviews</th>
-                        <th>POs</th>
-                        <th>Client Name</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -254,24 +198,6 @@
                         </td>
                         <td class="stage-cell final">{{ stat.final }}</td>
                         <td class="text-bold">{{ stat.interview_count }}</td>
-                        <td>
-                            {% if po_state == 'ready' %}
-                            <span class="badge badge-subtle">{{ stat.po_count or 0 }}</span>
-                            {% elif po_counts_locked %}
-                            <span class="badge badge-subtle">Locked</span>
-                            {% else %}
-                            <span class="badge badge-subtle">N/A</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-muted">
-                            {% if po_state == 'ready' %}
-                            {{ stat.client_names|join(', ') if stat.client_names else 'N/A' }}
-                            {% elif po_counts_locked %}
-                            Locked
-                            {% else %}
-                            N/A
-                            {% endif %}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
