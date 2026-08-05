@@ -107,6 +107,14 @@
                         </svg>
                         <span>Interview Records</span>
                     </a>
+                    <a href="{{ url_for('candidates.candidate_lookup') }}"
+                        class="nav-link {% if request.endpoint == 'candidates.candidate_lookup' %}active{% endif %}">
+                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        <span>Candidate Lookup</span>
+                    </a>
                     <a href="{{ url_for('analytics.export_center') }}"
                         class="nav-link {% if request.endpoint == 'analytics.export_center' %}active{% endif %}">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
