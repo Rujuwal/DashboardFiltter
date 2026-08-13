@@ -1215,4 +1215,68 @@ def export_expert_activity():
 
 @candidates_bp.route('/active', methods=['GET'])
 def active_candidates():
-    return redirect(url_for('dashboard.index'))
+    """
+    Active Candidates -- flat list of every candidate who had at least one
+    taskBody interview in the selected month, across all experts/teams.
+
+    "Active" here is exactly the Expert Activity page's definition: an
+    interview's date is parsed from the subject line first, falling back to
+    receivedDateTime, and matched against the selected month/year. A
+    candidate belongs to an expert via candidateDetails.Expert. Uses the
+    same fetch_expert_activity_data() this page already relies on, so the
+    two pages can never disagree.
+    """
+    current_date = datetime.utcnow()
+    month = request.args.get('month', current_date.strftime('%b').upper())
+    year = request.args.get('year', str(current_date.year))
+
+    status_filter = request.args.get('status', '')
+    team_filter = request.args.get('team', '')
+    expert_filter = request.args.get('expert', '')
+    exclude_rounds = request.args.get('exclude_rounds', '')
+    search_query = request.args.get('q', '').strip()
+
+    team_data, _ = fetch_expert_activity_data(
+        month, year, status_filter, team_filter, expert_filter, exclude_rounds=exclude_rounds
+    )
+
+    search_key = normalize_lookup_text(search_query)
+    candidates = []
+    for team in team_data:
+        for expert in team['experts']:
+            for c in expert.get('active_candidates', []):
+                if search_key and search_key not in normalize_lookup_text(c.get('CandidateName')):
+                    continue
+                candidates.append({
+                    **c,
+                    'Team': team['team'],
+                    'Expert': expert['expert'],
+                    'ExpertName': expert['expert_name'],
+                })
+
+    candidates.sort(key=lambda x: x.get('InterviewCount', 0), reverse=True)
+
+    all_teams, all_experts, _ = get_team_options()
+    current_year = datetime.utcnow().year
+    years = [str(y) for y in range(current_year, current_year - 5, -1)]
+    months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+
+    return render_template(
+        'active_candidates.html',
+        candidates=candidates,
+        total_candidates=len(candidates),
+        total_interviews=sum(c.get('InterviewCount', 0) for c in candidates),
+        unique_experts=len({c['Expert'] for c in candidates}),
+        unique_teams=len({c['Team'] for c in candidates}),
+        selected_month=month,
+        selected_year=year,
+        months=months,
+        years=years,
+        selected_status=status_filter,
+        selected_team=team_filter,
+        selected_expert=expert_filter,
+        exclude_rounds=exclude_rounds,
+        search_query=search_query,
+        all_teams=all_teams,
+        all_experts=all_experts,
+    )
