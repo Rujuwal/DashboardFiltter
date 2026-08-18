@@ -396,15 +396,55 @@
                                             <polyline points="6 9 12 15 18 9" />
                                         </svg>
                                     </summary>
-                                    <div class="candidate-list">
-                                        {% for c in stat.candidates %}
-                                        <div class="candidate-item">
-                                            <div class="candidate-info">
-                                                <span class="candidate-name">{{ c.name }}</span>
-                                                <span class="candidate-count">{{ c.interview_count }} interview{{ 's' if c.interview_count != 1 else '' }}</span>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
+                                    <div class="candidate-funnel-wrapper">
+                                        <table class="data-table candidate-funnel-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Candidate</th>
+                                                    <th>Interviews</th>
+                                                    <th>Screening</th>
+                                                    <th>1st</th>
+                                                    <th>2nd</th>
+                                                    <th>3rd/Tech</th>
+                                                    <th>Loop Round</th>
+                                                    <th>Final</th>
+                                                    <th>Scr to 1st</th>
+                                                    <th>1st to 2nd</th>
+                                                    <th>2nd to 3rd</th>
+                                                    <th>3rd to Loop</th>
+                                                    <th>Loop to Fin</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for c in stat.candidates %}
+                                                <tr>
+                                                    <td class="candidate-name">{{ c.name }}</td>
+                                                    <td class="text-bold">{{ c.interview_count }}</td>
+                                                    <td class="stage-cell screening">{{ c.screening }}</td>
+                                                    <td class="stage-cell first">{{ c.first }}</td>
+                                                    <td class="stage-cell second">{{ c.second }}</td>
+                                                    <td class="stage-cell third">{{ c.third_tech }}</td>
+                                                    <td class="stage-cell loop">{{ c.loop_round }}</td>
+                                                    <td class="stage-cell final">{{ c.final }}</td>
+                                                    <td class="conversion-cell {% if c.screening_to_1st >= 50 %}good{% elif c.screening_to_1st >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.screening_to_1st, 100]|min }}%{% if c.screening_to_1st > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.first_to_2nd >= 50 %}good{% elif c.first_to_2nd >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.first_to_2nd, 100]|min }}%{% if c.first_to_2nd > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.second_to_3rd >= 50 %}good{% elif c.second_to_3rd >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.second_to_3rd, 100]|min }}%{% if c.second_to_3rd > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.third_to_loop >= 50 %}good{% elif c.third_to_loop >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.third_to_loop, 100]|min }}%{% if c.third_to_loop > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.loop_to_final >= 50 %}good{% elif c.loop_to_final >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.loop_to_final, 100]|min }}%{% if c.loop_to_final > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </details>
                                 {% else %}
@@ -742,42 +782,29 @@
         transform: rotate(180deg);
     }
 
-    .candidate-list {
+    .candidate-funnel-wrapper {
         margin-top: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .candidate-item {
-        display: flex;
-        align-items: center;
-        padding: 8px 12px;
+        overflow-x: auto;
         background: var(--bg-elevated);
-        border-radius: 6px;
+        border-radius: 8px;
         border-left: 3px solid var(--primary);
     }
 
-    .candidate-info {
-        flex: 1;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
+    .candidate-funnel-table {
+        min-width: 760px;
+        font-size: 0.85rem;
     }
 
-    .candidate-name {
+    .candidate-funnel-table th,
+    .candidate-funnel-table td {
+        padding: 8px 10px;
+        white-space: nowrap;
+    }
+
+    .candidate-funnel-table td.candidate-name {
         font-weight: 500;
         color: var(--text-primary);
-    }
-
-    .candidate-count {
-        font-size: 0.85rem;
-        color: var(--text-muted);
-        background: var(--surface);
-        padding: 4px 8px;
-        border-radius: 4px;
-        white-space: nowrap;
+        white-space: normal;
     }
 </style>
 {% endblock %}
