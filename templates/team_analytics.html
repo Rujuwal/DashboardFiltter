@@ -358,6 +358,7 @@
                         <tr>
                             <th>Rank</th>
                             <th>Expert</th>
+                            <th>Candidates</th>
                             <th>Interviews</th>
                             <th>Screening</th>
                             <th>1st</th>
@@ -385,6 +386,70 @@
                                     <div class="expert-avatar small">{{ stat.expert[0]|upper }}</div>
                                     <span>{{ stat.expert.split('@')[0] }}</span>
                                 </div>
+                            </td>
+                            <td>
+                                {% if stat.candidates %}
+                                <details class="candidate-details">
+                                    <summary class="candidate-summary">
+                                        {{ stat.candidates|length }} candidate(s)
+                                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                            <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                    </summary>
+                                    <div class="candidate-funnel-wrapper">
+                                        <table class="data-table candidate-funnel-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Candidate</th>
+                                                    <th>Interviews</th>
+                                                    <th>Screening</th>
+                                                    <th>1st</th>
+                                                    <th>2nd</th>
+                                                    <th>3rd/Tech</th>
+                                                    <th>Loop Round</th>
+                                                    <th>Final</th>
+                                                    <th>Scr to 1st</th>
+                                                    <th>1st to 2nd</th>
+                                                    <th>2nd to 3rd</th>
+                                                    <th>3rd to Loop</th>
+                                                    <th>Loop to Fin</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for c in stat.candidates %}
+                                                <tr>
+                                                    <td class="candidate-name">{{ c.name }}</td>
+                                                    <td class="text-bold">{{ c.interview_count }}</td>
+                                                    <td class="stage-cell screening">{{ c.screening }}</td>
+                                                    <td class="stage-cell first">{{ c.first }}</td>
+                                                    <td class="stage-cell second">{{ c.second }}</td>
+                                                    <td class="stage-cell third">{{ c.third_tech }}</td>
+                                                    <td class="stage-cell loop">{{ c.loop_round }}</td>
+                                                    <td class="stage-cell final">{{ c.final }}</td>
+                                                    <td class="conversion-cell {% if c.screening_to_1st >= 50 %}good{% elif c.screening_to_1st >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.screening_to_1st, 100]|min }}%{% if c.screening_to_1st > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.first_to_2nd >= 50 %}good{% elif c.first_to_2nd >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.first_to_2nd, 100]|min }}%{% if c.first_to_2nd > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.second_to_3rd >= 50 %}good{% elif c.second_to_3rd >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.second_to_3rd, 100]|min }}%{% if c.second_to_3rd > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.third_to_loop >= 50 %}good{% elif c.third_to_loop >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.third_to_loop, 100]|min }}%{% if c.third_to_loop > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                    <td class="conversion-cell {% if c.loop_to_final >= 50 %}good{% elif c.loop_to_final >= 25 %}medium{% else %}low{% endif %}">
+                                                        {{ [c.loop_to_final, 100]|min }}%{% if c.loop_to_final > 100 %}<sup>*</sup>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </details>
+                                {% else %}
+                                <span class="text-muted">No candidates</span>
+                                {% endif %}
                             </td>
                             <td class="text-bold">{{ stat.interview_count }}</td>
                             <td class="stage-cell screening">{{ stat.screening }}</td>
@@ -690,4 +755,56 @@
     });
     {% endif %}
 </script>
+<style>
+    .candidate-details {
+        cursor: pointer;
+    }
+
+    .candidate-summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary);
+        font-weight: 500;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .candidate-summary:hover {
+        color: var(--primary-hover);
+    }
+
+    .chevron {
+        transition: transform 0.3s ease;
+    }
+
+    details[open] .chevron {
+        transform: rotate(180deg);
+    }
+
+    .candidate-funnel-wrapper {
+        margin-top: 12px;
+        overflow-x: auto;
+        background: var(--bg-elevated);
+        border-radius: 8px;
+        border-left: 3px solid var(--primary);
+    }
+
+    .candidate-funnel-table {
+        min-width: 760px;
+        font-size: 0.85rem;
+    }
+
+    .candidate-funnel-table th,
+    .candidate-funnel-table td {
+        padding: 8px 10px;
+        white-space: nowrap;
+    }
+
+    .candidate-funnel-table td.candidate-name {
+        font-weight: 500;
+        color: var(--text-primary);
+        white-space: normal;
+    }
+</style>
 {% endblock %}

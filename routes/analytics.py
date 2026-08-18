@@ -965,6 +965,39 @@ def team_analytics():
             members = teams_map.get(selected_team, [])
             member_stats = [s for s in expert_stats if s['expert'] in members]
 
+            # Team Lead -> Expert -> Candidate (with interview count) drill-down.
+            # interview_count here is computed the exact same way as an expert's own
+            # interview_count (get_candidate_funnel_data shares fetch_completed_interviews /
+            # build_funnel_metrics with get_expert_funnel_data) -- just attributed per candidate.
+            candidate_stats, _, _ = get_candidate_funnel_data(
+                db, start_date, end_date, selected_team, filter_expert
+            )
+            candidates_by_expert = defaultdict(list)
+            for c in candidate_stats:
+                if c.get('interview_count', 0) <= 0:
+                    continue
+                # Same funnel breakdown an expert row gets, just per candidate --
+                # build_funnel_metrics() already put all of this on c.
+                candidates_by_expert[c['lead_expert']].append({
+                    'name': c['candidate'],
+                    'interview_count': c['interview_count'],
+                    'screening': c['screening'],
+                    'first': c['first'],
+                    'second': c['second'],
+                    'third_tech': c['third_tech'],
+                    'loop_round': c['loop_round'],
+                    'final': c['final'],
+                    'screening_to_1st': c['screening_to_1st'],
+                    'first_to_2nd': c['first_to_2nd'],
+                    'second_to_3rd': c['second_to_3rd'],
+                    'third_to_loop': c['third_to_loop'],
+                    'loop_to_final': c['loop_to_final'],
+                })
+            for stat in member_stats:
+                members_candidates = candidates_by_expert.get(stat['expert'], [])
+                members_candidates.sort(key=lambda x: x['interview_count'], reverse=True)
+                stat['candidates'] = members_candidates
+
     return render_template(
         'team_analytics.html',
         team_stats=team_stats,
