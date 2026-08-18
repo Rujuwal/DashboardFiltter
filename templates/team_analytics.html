@@ -358,8 +358,7 @@
                         <tr>
                             <th>Rank</th>
                             <th>Expert</th>
-                            <th>Active Candidates</th>
-                            <th>Candidate Types</th>
+                            <th>Candidates</th>
                             <th>Interviews</th>
                             <th>Screening</th>
                             <th>1st</th>
@@ -388,8 +387,30 @@
                                     <span>{{ stat.expert.split('@')[0] }}</span>
                                 </div>
                             </td>
-                            <td class="text-center"><span class="badge badge-success">{{ stat.active_candidates }}</span></td>
-                            <td class="text-muted">{{ stat.candidate_types or '—' }}</td>
+                            <td>
+                                {% if stat.candidates %}
+                                <details class="candidate-details">
+                                    <summary class="candidate-summary">
+                                        {{ stat.candidates|length }} candidate(s)
+                                        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                            <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                    </summary>
+                                    <div class="candidate-list">
+                                        {% for c in stat.candidates %}
+                                        <div class="candidate-item">
+                                            <div class="candidate-info">
+                                                <span class="candidate-name">{{ c.name }}</span>
+                                                <span class="candidate-count">{{ c.interview_count }} interview{{ 's' if c.interview_count != 1 else '' }}</span>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                                {% else %}
+                                <span class="text-muted">No candidates</span>
+                                {% endif %}
+                            </td>
                             <td class="text-bold">{{ stat.interview_count }}</td>
                             <td class="stage-cell screening">{{ stat.screening }}</td>
                             <td class="stage-cell first">{{ stat.first }}</td>
@@ -694,4 +715,69 @@
     });
     {% endif %}
 </script>
+<style>
+    .candidate-details {
+        cursor: pointer;
+    }
+
+    .candidate-summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary);
+        font-weight: 500;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .candidate-summary:hover {
+        color: var(--primary-hover);
+    }
+
+    .chevron {
+        transition: transform 0.3s ease;
+    }
+
+    details[open] .chevron {
+        transform: rotate(180deg);
+    }
+
+    .candidate-list {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .candidate-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--bg-elevated);
+        border-radius: 6px;
+        border-left: 3px solid var(--primary);
+    }
+
+    .candidate-info {
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .candidate-name {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .candidate-count {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        background: var(--surface);
+        padding: 4px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+</style>
 {% endblock %}

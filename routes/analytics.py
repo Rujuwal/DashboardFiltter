@@ -965,12 +965,25 @@ def team_analytics():
             members = teams_map.get(selected_team, [])
             member_stats = [s for s in expert_stats if s['expert'] in members]
 
-            # Attach the same live active-candidate caseload shown on Expert Analytics
-            active_candidate_stats = get_active_candidate_stats_by_expert(db)
+            # Team Lead -> Expert -> Candidate (with interview count) drill-down.
+            # interview_count here is computed the exact same way as an expert's own
+            # interview_count (get_candidate_funnel_data shares fetch_completed_interviews /
+            # build_funnel_metrics with get_expert_funnel_data) -- just attributed per candidate.
+            candidate_stats, _, _ = get_candidate_funnel_data(
+                db, start_date, end_date, selected_team, filter_expert
+            )
+            candidates_by_expert = defaultdict(list)
+            for c in candidate_stats:
+                if c.get('interview_count', 0) <= 0:
+                    continue
+                candidates_by_expert[c['lead_expert']].append({
+                    'name': c['candidate'],
+                    'interview_count': c['interview_count'],
+                })
             for stat in member_stats:
-                extra = active_candidate_stats.get(stat['expert'], {})
-                stat['active_candidates'] = extra.get('active_count', 0)
-                stat['candidate_types'] = extra.get('top_technologies', '')
+                members_candidates = candidates_by_expert.get(stat['expert'], [])
+                members_candidates.sort(key=lambda x: x['interview_count'], reverse=True)
+                stat['candidates'] = members_candidates
 
     return render_template(
         'team_analytics.html',
