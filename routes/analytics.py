@@ -965,6 +965,13 @@ def team_analytics():
             members = teams_map.get(selected_team, [])
             member_stats = [s for s in expert_stats if s['expert'] in members]
 
+            # Attach the same live active-candidate caseload shown on Expert Analytics
+            active_candidate_stats = get_active_candidate_stats_by_expert(db)
+            for stat in member_stats:
+                extra = active_candidate_stats.get(stat['expert'], {})
+                stat['active_candidates'] = extra.get('active_count', 0)
+                stat['candidate_types'] = extra.get('top_technologies', '')
+
     return render_template(
         'team_analytics.html',
         team_stats=team_stats,

@@ -358,6 +358,8 @@
                         <tr>
                             <th>Rank</th>
                             <th>Expert</th>
+                            <th>Active Candidates</th>
+                            <th>Candidate Types</th>
                             <th>Interviews</th>
                             <th>Screening</th>
                             <th>1st</th>
@@ -386,6 +388,8 @@
                                     <span>{{ stat.expert.split('@')[0] }}</span>
                                 </div>
                             </td>
+                            <td class="text-center"><span class="badge badge-success">{{ stat.active_candidates }}</span></td>
+                            <td class="text-muted">{{ stat.candidate_types or '—' }}</td>
                             <td class="text-bold">{{ stat.interview_count }}</td>
                             <td class="stage-cell screening">{{ stat.screening }}</td>
                             <td class="stage-cell first">{{ stat.first }}</td>
