@@ -30,7 +30,7 @@ from services.team_management import (
 )
 
 analytics_bp = Blueprint('analytics', __name__)
-ANALYTICS_CACHE_VERSION = "v10"
+ANALYTICS_CACHE_VERSION = "v11"
 
 # Round mapping from actualRound to funnel stages
 ROUND_BUCKETS = {
@@ -60,7 +60,6 @@ ROUND_BUCKET_PATTERNS = (
 )
 
 PIPELINE_ORDER = ["Screening", "1st", "2nd", "3rd/Technical", "Loop Round", "Final"]
-INTERVIEW_STATS_ROUND_EXCLUSIONS = ["Screening", "On demand", "On Demand", "On Demand or AI Interview"]
 INTERVIEW_STATUS_BUCKETS = {
     "completed": "Completed",
     "cancelled": "Cancelled",
@@ -167,18 +166,44 @@ def build_received_date_match(start_date="", end_date=""):
     return build_interview_date_match(start_date, end_date)
 
 
-def build_interview_stats_match(start_date="", end_date=""):
+def non_screening_round_expr():
+    """
+    Excludes Screening / On-Demand / AI-Interview rounds by SUBSTRING match
+    (case-insensitive), not exact string equality. Some actualRound values are
+    corrupted with the full raw email body instead of a clean round label
+    (~3% of completed rows) -- an exact-match exclusion list silently lets
+    those through as if they were real interviews. This matches the same
+    "screen"/"demand"/"ai interview" substring rule bucket_of() (in
+    services/interview_metrics.py) already uses for the funnel pages, so a
+    corrupted-but-really-a-Screening row is excluded consistently everywhere.
+    """
     return {
-        **build_interview_date_match(start_date, end_date),
-        "actualRound": {"$nin": INTERVIEW_STATS_ROUND_EXCLUSIONS},
+        "$not": {
+            "$regexMatch": {
+                "input": {"$toLower": {"$ifNull": ["$actualRound", ""]}},
+                "regex": "screen|demand|ai interview",
+            }
+        }
+    }
+
+
+def build_interview_stats_match(start_date="", end_date=""):
+    # Both the date filter and the round-exclusion filter use "$expr" -- merge them with
+    # $and rather than spreading two dicts that would otherwise silently clobber each other.
+    date_match = build_interview_date_match(start_date, end_date)
+    exprs = [non_screening_round_expr()]
+    if "$expr" in date_match:
+        exprs.append(date_match["$expr"])
+    return {
         "assignedTo": {"$type": "string", "$ne": ""},
+        "$expr": exprs[0] if len(exprs) == 1 else {"$and": exprs},
     }
 
 
 def build_interview_activity_match(statuses=None):
     match_query = {
-        "actualRound": {"$nin": INTERVIEW_STATS_ROUND_EXCLUSIONS},
         "assignedTo": {"$type": "string", "$ne": ""},
+        "$expr": non_screening_round_expr(),
     }
     if statuses:
         normalized_statuses = [str(status).strip() for status in statuses if str(status).strip()]
@@ -235,8 +260,8 @@ def resolve_completed_interview_context(raw_expert, expert_team_map, directory=N
 def build_completed_interview_query():
     return {
         "status": "Completed",
-        "actualRound": {"$nin": INTERVIEW_STATS_ROUND_EXCLUSIONS},
         "assignedTo": {"$type": "string", "$ne": ""},
+        "$expr": non_screening_round_expr(),
     }
 
 
@@ -247,19 +272,13 @@ def aggregate_interview_stats_by_expert(db, start_date="", end_date="", active_e
         expert_team_map = get_expert_team_map(db)[0]
 
     expert_stats_map = {}
-    for record in get_interview_stats_records(
-        db,
-        start_date=start_date,
-        end_date=end_date,
-        active_experts=active_experts,
-        expert_team_map=expert_team_map,
-    ):
-        expert_key = record["expert_key"]
-        stats = expert_stats_map.setdefault(
+
+    def get_stats(expert_key, team_name):
+        return expert_stats_map.setdefault(
             expert_key,
             {
                 "Expert": expert_key,
-                "Team": record["team_name"],
+                "Team": team_name,
                 "CompletedCount": 0,
                 "CancelledCount": 0,
                 "RescheduledCount": 0,
@@ -267,10 +286,38 @@ def aggregate_interview_stats_by_expert(db, start_date="", end_date="", active_e
                 "TotalInterviews": 0,
             },
         )
+
+    # Completed counts come from the exact same funnel computation Expert/Team Analytics
+    # use (get_expert_funnel_data -> fetch_completed_interviews + bucket_of, with loop
+    # rounds deduped by candidate+end client) -- a single source of truth, so "Completed"
+    # here can never drift from those pages again, including for actualRound values
+    # corrupted with raw email-body text that an exact-string exclusion list would miss.
+    funnel_stats, _ = get_expert_funnel_data(db, start_date, end_date, None, None)
+    for stat in funnel_stats:
+        expert_key = stat['expert']
+        if expert_key not in active_experts:
+            continue
+        stats = get_stats(expert_key, expert_team_map.get(expert_key, "Unmapped"))
+        stats["CompletedCount"] = stat['interview_count']
+        stats["TotalInterviews"] += stat['interview_count']
+
+    # Cancelled / Rescheduled / Not Done have no funnel-stage equivalent to align to, so
+    # they still come from the raw activity records (with the same substring-based round
+    # exclusion as everywhere else, via get_interview_stats_records/build_interview_activity_match).
+    for record in get_interview_stats_records(
+        db,
+        start_date=start_date,
+        end_date=end_date,
+        active_experts=active_experts,
+        expert_team_map=expert_team_map,
+    ):
         status_bucket = record["status_bucket"]
-        if status_bucket == "Completed":
-            stats["CompletedCount"] += 1
-        elif status_bucket == "Cancelled":
+        if status_bucket == "Completed" or not status_bucket:
+            continue
+
+        expert_key = record["expert_key"]
+        stats = get_stats(expert_key, record["team_name"])
+        if status_bucket == "Cancelled":
             stats["CancelledCount"] += 1
         elif status_bucket == "Rescheduled":
             stats["RescheduledCount"] += 1
