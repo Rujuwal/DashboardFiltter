@@ -30,7 +30,7 @@ from services.team_management import (
 )
 
 analytics_bp = Blueprint('analytics', __name__)
-ANALYTICS_CACHE_VERSION = "v12"
+ANALYTICS_CACHE_VERSION = "v13"
 
 # Round mapping from actualRound to funnel stages
 ROUND_BUCKETS = {
@@ -120,15 +120,17 @@ def build_funnel_metrics(stages):
     r3 = stages.get("3rd/Technical", 0)
     loop = stages.get("Loop Round", 0)
     fin = stages.get("Final", 0)
+    other = stages.get("Other", 0)
 
     return {
-        'interview_count': r1 + r2 + r3 + loop + fin,
+        'interview_count': r1 + r2 + r3 + loop + fin + other,
         'screening': scr,
         'first': r1,
         'second': r2,
         'third_tech': r3,
         'loop_round': loop,
         'final': fin,
+        'other': other,
         'screening_to_1st': pct(r1, scr),
         'first_to_2nd': pct(r2, r1),
         'second_to_3rd': pct(r3, r2),

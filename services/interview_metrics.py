@@ -1,10 +1,16 @@
 """
 Shared interview classification, matching the Daily Conversion Brief / PO report exactly.
 
-Rules (agreed 2026-07-02):
+Rules (agreed 2026-07-02, classification rewritten 2026-10-01):
   * Round category comes from ``actualRound`` (recruiter-verified), falling back to the
-    originally-scheduled ``Interview Round`` when ``actualRound`` is blank/too short
-    (agreed 2026-10-01, closes a gap where such rows were silently dropped as "uncat").
+    originally-scheduled ``Interview Round`` when ``actualRound`` is blank/too short.
+  * ``actualRound`` is first cleaned of surrounding HTML (leading tags stripped, then cut
+    at the next "<" if trailing markup/email-body text follows) so a corrupted value
+    only ever contributes its genuine leading label, never a keyword buried in feedback
+    text further down.
+  * The cleaned text is matched EXACTLY (not by substring) against a canon round-name
+    dictionary. Text that doesn't match any canon label is NOT discarded -- it is kept
+    as its own real round and still counts as an interview (bucketed as "Other").
   * "On Demand / AI Interview" rounds are EXCLUDED entirely.
   * "Screening" is split out and excluded from the interview count.
   * Loop rounds for the SAME end client count once (deduped by candidate + end-client key),
@@ -22,6 +28,41 @@ from datetime import date
 
 # Rounds that never count as an interview or a screening (asynchronous / automated).
 AI_ROUND_TOKENS = ("demand", "ai interview")
+
+# Exact (case-insensitive, post-HTML-clean) round-name -> funnel bucket. Anything that
+# doesn't match one of these exactly is kept as its own real round (bucket "other"),
+# not discarded.
+EXACT_ROUND_CANON = {
+    "screening": "screen",
+    "1st round": "first",
+    "2nd round": "second",
+    "3rd round": "third",
+    "4th round": "third",
+    "technical round": "tech",
+    "coding round": "tech",
+    "loop round": "loop",
+    "final round": "final",
+    "on-demand interview": "ai",
+    "ai interview": "ai",
+}
+
+# Leading HTML tag(s) / entity(ies) at the very start of a value, e.g.
+# "</b> 1st Round<br>..." or "&nbsp;Screening".
+_LEADING_HTML_NOISE_RE = re.compile(r"^(?:\s*(?:<[^>]+>|&[a-zA-Z#0-9]+;))+\s*")
+
+
+def clean_round_label(s):
+    """
+    Isolate the genuine round label from a possibly HTML/email-corrupted ``actualRound``:
+    strip any leading HTML tag(s)/entity(ies), then cut at the next "<" if trailing
+    markup/body text follows, so only the clean leading label is ever classified.
+    """
+    s = str(s or "")
+    s = _LEADING_HTML_NOISE_RE.sub("", s)
+    idx = s.find("<")
+    if idx != -1:
+        s = s[:idx]
+    return s.strip()
 
 
 def norm(s):
@@ -54,39 +95,30 @@ def candidate_key(s):
 
 def bucket_of(actual_round, fallback_round=None):
     """
-    Map a raw ``actualRound`` string to a funnel bucket. Mirrors the report's bucketOf().
+    Map a raw ``actualRound`` string to a funnel bucket.
 
-    When ``actualRound`` is blank/too short, falls back to ``fallback_round`` (the
-    originally-scheduled ``Interview Round``) so rows the recruiter never verified
-    still classify instead of being dropped as "uncat".
+    ``actualRound`` is cleaned of surrounding HTML (clean_round_label) and matched
+    EXACTLY against EXACT_ROUND_CANON. When cleaned ``actualRound`` is blank/too short,
+    falls back to ``fallback_round`` (the originally-scheduled ``Interview Round``).
+    A cleaned label that doesn't match the canon dictionary is NOT discarded -- it is
+    returned as bucket "other", which still counts as a real interview. On-Demand/AI
+    rounds are checked first (by substring, not exact match) since that phrasing varies
+    a lot in practice ("On Demand", "On-Demand AI Interview", "On Demand or AI
+    Interview", ...) and must always stay excluded regardless of wording.
     """
-    s = str(actual_round or "").strip()
+    s = clean_round_label(actual_round)
     if len(s) < 3:
-        s = str(fallback_round or "").strip()
+        s = clean_round_label(fallback_round)
         if len(s) < 3:
             return "uncat"
     l = s.lower()
-    if "screen" in l:
-        return "screen"
-    if "loop" in l:
-        return "loop"
-    if "final" in l:
-        return "final"
     if any(tok in l for tok in AI_ROUND_TOKENS):
-        return "ai"  # excluded
-    if "coding" in l or "technical" in l:
-        return "tech"
-    if re.search(r"3rd|third|4th|fourth", l):
-        return "third"
-    if re.search(r"2nd|second", l):
-        return "second"
-    if re.search(r"1st|first", l):
-        return "first"
-    return "other"
+        return "ai"
+    return EXACT_ROUND_CANON.get(l, "other")
 
 
 # Buckets that count as a "real" interview (1 row = 1), before loop dedup is added.
-REGULAR_BUCKETS = ("first", "second", "third", "tech", "final")
+REGULAR_BUCKETS = ("first", "second", "third", "tech", "final", "other")
 
 # actualRound values whose rows are dropped from every count (AI/On-Demand).
 EXCLUDED_ACTUAL_ROUNDS = ["On demand", "On Demand", "On Demand or AI Interview"]
@@ -214,6 +246,7 @@ def blank_stage_counts():
         "3rd/Technical": 0,
         "Loop Round": 0,
         "Final": 0,
+        "Other": 0,
     }
 
 
@@ -244,7 +277,9 @@ def stage_counts_by_group(records, key_getter):
             stages[key]["Final"] += 1
         elif bucket == "loop":
             loop_sets[key].add((r.get("candidate_key", ""), r.get("client_key", "")))
-        # "ai", "other", "uncat" -> excluded
+        elif bucket == "other":
+            stages[key]["Other"] += 1
+        # "ai", "uncat" -> excluded
 
     for key, loops in loop_sets.items():
         stages[key]["Loop Round"] = len(loops)
