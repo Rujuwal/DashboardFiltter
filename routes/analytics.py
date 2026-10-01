@@ -30,7 +30,7 @@ from services.team_management import (
 )
 
 analytics_bp = Blueprint('analytics', __name__)
-ANALYTICS_CACHE_VERSION = "v11"
+ANALYTICS_CACHE_VERSION = "v12"
 
 # Round mapping from actualRound to funnel stages
 ROUND_BUCKETS = {

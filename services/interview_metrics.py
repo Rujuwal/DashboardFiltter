@@ -2,7 +2,9 @@
 Shared interview classification, matching the Daily Conversion Brief / PO report exactly.
 
 Rules (agreed 2026-07-02):
-  * Round category comes from ``actualRound`` (recruiter-verified).
+  * Round category comes from ``actualRound`` (recruiter-verified), falling back to the
+    originally-scheduled ``Interview Round`` when ``actualRound`` is blank/too short
+    (agreed 2026-10-01, closes a gap where such rows were silently dropped as "uncat").
   * "On Demand / AI Interview" rounds are EXCLUDED entirely.
   * "Screening" is split out and excluded from the interview count.
   * Loop rounds for the SAME end client count once (deduped by candidate + end-client key),
@@ -50,11 +52,19 @@ def candidate_key(s):
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", norm(s))).strip()
 
 
-def bucket_of(actual_round):
-    """Map a raw ``actualRound`` string to a funnel bucket. Mirrors the report's bucketOf()."""
+def bucket_of(actual_round, fallback_round=None):
+    """
+    Map a raw ``actualRound`` string to a funnel bucket. Mirrors the report's bucketOf().
+
+    When ``actualRound`` is blank/too short, falls back to ``fallback_round`` (the
+    originally-scheduled ``Interview Round``) so rows the recruiter never verified
+    still classify instead of being dropped as "uncat".
+    """
     s = str(actual_round or "").strip()
     if len(s) < 3:
-        return "uncat"
+        s = str(fallback_round or "").strip()
+        if len(s) < 3:
+            return "uncat"
     l = s.lower()
     if "screen" in l:
         return "screen"
@@ -176,6 +186,7 @@ def fetch_completed_interviews(db, start_date="", end_date="", extra_match=None)
             "_id": 0,
             "assignedTo": 1,
             "actualRound": 1,
+            "Interview Round": 1,
             "Candidate Name": 1,
             "End Client": 1,
             "Date of Interview": 1,
@@ -187,7 +198,7 @@ def fetch_completed_interviews(db, start_date="", end_date="", extra_match=None)
             continue
         if end and (interview_date is None or interview_date > end):
             continue
-        doc["bucket"] = bucket_of(doc.get("actualRound"))
+        doc["bucket"] = bucket_of(doc.get("actualRound"), doc.get("Interview Round"))
         doc["candidate_key"] = candidate_key(doc.get("Candidate Name"))
         doc["client_key"] = client_key(doc.get("End Client"))
         doc["interview_date"] = interview_date.isoformat() if interview_date else None
